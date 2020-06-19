@@ -1,0 +1,277 @@
+---
+header-includes: \usepackage{lipsum}
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+\newgeometry{top = 20mm, bottom = 18mm, left = 20mm, right = 20mm}
+\newpage
+\huge
+\begin{center} Classifying Images in MNIST Data \end{center}
+\Large
+\begin{center} Kaustav Khatua \hspace{1cm} \end{center}
+\begin{center} Roll No. 181075 \end{center}
+\normalsize
+
+\vspace{5mm}
+\section{Introduction}
+In Regression or Time Series Analysis we consider only one aspect, ie. either cross-sectional or time aspect. But, in real life many cases arise where considering only one may not be sufficient. Panel Data is such type of example. Here generally we have **N** individuals and for every individual we have data for **T** (T $\geq$ 2) time points. So, applying concepts of Regression or Time Series analysis alone will not produce good result. Panel Data analysis is the method which we should use in these cases. Here I have applied concepts of Panal Data analysis on **Grunfeld Data**.
+\section{About Grunfeld Data}
+It is a blanced and long panel data. Here cross-sectional units are General Motors, US Steel, General Electric, Chrysler, etc. 10 such companies and for every company data of 20 years (1935 - 1954) are given. Our goal is to predict **Gross invest**($Y$) on the basis of **Market value**($X_{1}$) and **Capital**($X_{2}$). All the measurements are in 1947 dollars.
+\section{Analysing the Data}
+We want a model which looks overally like this,
+\large
+\begin{center} \hspace{15mm} $Y_{it} \hspace{2mm} = \hspace{2mm} \beta_0 \hspace{2mm} + \hspace{2mm} \beta_1 X_{1it} \hspace{2mm} + \hspace{2mm} \beta_2 X_{2it} \hspace{2mm} + \hspace{2mm} \epsilon_{it}$ \hspace{5mm} $\cdots(1)$ \end{center}
+\begin{center}\hspace{45mm}$i = 1, 2, 3,..., 10$ \end{center}
+\begin{center}\hspace{45mm}$t = 1, 2, 3,..., 20$\end{center}
+\normalsize
+where $i$ denotes $i$th company and $t$ denotes $t$th year. Now depending upon the assumption we make on intercept, slope coefficients and error term we get different models. We generally consider three main models; Pooled model, Fixed Effects model and Random Effects model.
+\subsection{Pooled Model}
+Here we assume that all coefficients are same for all the companies, they are time invariant and error term captures time and cross-sectional effect, ie. we ignore the individual and time dimension of the panel data and do usual **OLS** estimation. Advantage of this model is it is simple and easy to fit but if cross section or time has influence on the data then this model will not perform well.
+
+\vspace{1mm}
+
+In our case summary of the Pooled model is:
+```{r echo = FALSE}
+data(Grunfeld, package = "AER")
+pooled_model <- lm(invest ~ value + capital, data = Grunfeld)
+output <- capture.output(summary(pooled_model))
+cat(noquote(output[10:13]), fill = getOption("width"))
+cat(noquote(""))
+cat(noquote(output[17:19]), fill = getOption("width"))
+```
+
+\vspace{2mm}
+Every coefficient is significant and p-value of the fit is small indicating that the model is significant overally. It may happen that the data really does not show much time or individual effect, as a result Pooled model is performing well. But when analysing panel data we don't accept the Pooled Model without checking other aspects.
+
+\newpage
+\newgeometry{top = 16mm, bottom = 18mm, left = 20mm, right = 18mm}
+First we check whether the coefficients can varry for different companies. We may get some intuition from the following picture.
+
+\vspace{2mm}
+```{r include = FALSE}
+library(ggplot2)
+library(grid)
+library(gridExtra)
+library(plm)
+```
+
+```{r echo = FALSE, fig.align = "center", fig.height = 4.4, fig.width = 7}
+data(Grunfeld, package = "AER")
+
+panel_data <- pdata.frame(Grunfeld, index = c("firm", "year"))
+
+value_graph <- ggplot(Grunfeld[1:80, ], aes(x = value, y = invest, color = factor(firm))) + geom_line() +
+  theme_classic() + theme(legend.position = "none", plot.margin = unit(c(1, 0, 1, 1),
+                                                                                      "lines"))
+
+capital_graph <- ggplot(Grunfeld[1:80, ], aes(x = capital, y = invest, color = factor(firm))) + 
+  geom_line() + theme_classic() + theme(legend.direction = "horizontal", plot.margin = unit(c(1, 0, 1, 1),
+                                                                                            "lines"))
+
+get_legend<-function(myggplot){
+  tmp <- ggplot_gtable(ggplot_build(myggplot))
+  leg <- which(sapply(tmp$grobs, function(x) x$name) == "guide-box")
+  legend <- tmp$grobs[[leg]]
+  return(legend)
+}
+legend <- get_legend(capital_graph)
+
+capital_graph <- capital_graph + theme(legend.position = "none")
+
+grid.arrange(value_graph, capital_graph, legend, ncol = 2, nrow = 2, layout_matrix = rbind(c(1, 2), c(3, 3)), widths = c(2.7, 2.7), heights = c(2.5, 0.2), top = textGrob("Invest as Function of Regressors", gp = gpar(fontsize = 14, font = 1)))
+```
+\scriptsize
+\begin{center}To avoid crowdedness plot is shown for only four companies.\end{center}
+\normalsize
+From the two graphs one can not say whether slopes are different for four companies. But in the capital graph when capital is near zero then invest is much higher for General Motors (red line) than Chrysler (violet line), ie. General Motors has bigger intecept than Chrysler It is a indication that Pooled Model may not be sufficient and we have to take cross sectional effect into consideration.
+
+\vspace{2mm}
+Now we may check whether time also has influence on the data or not. One way to check that is checking for autocorrelation, as autocorrelation measures the relationship between a variable and a lagged version of itself over various time intervals. Durbin Watson test checks for autocorrelation by testing whether the errors from a model forms an **AR(1) process**. If value of the test statistic is near 2 then we can expect that autocorrelation present in the data. One thing may be noted that low Durbin-Watson test statistic value can be a result of specification error. Test statistic is of the form:
+
+\large
+\begin{center}$d = \frac{\sum\limits_{i = 1}^N \sum\limits_{t = 2}^T (\epsilon_{i, t} - \epsilon_{i,t - 1})^2}{\sum\limits_{i = 1}^N \sum\limits_{t = 1}^T \epsilon_{i, t}^2} $ \end{center}
+\normalsize
+
+\vspace{1mm}
+where, $\epsilon_{i, t}$ is error from the model for $t$th observation of $i$th cross section.
+
+\vspace{1mm}
+For our case the result of the DW Test is as follows:
+```{r echo = FALSE}
+pdwtest(invest ~ value + capital, data = panel_data, model = "pooling")
+```
+So, time component may also be present in the data.
+
+\vspace{2mm}
+It is clear that time and cross sectional effects may not be negligible here and we have to respecify the model(1). There are several possibilities. Such as, slopes remain same but intercepts 
+vary over individual or all the coeffcients vary over time and individual etc. We consider them one by one.
+
+\subsection{Fixed Effects Model}
+Here we assume that all the coefficients are time invariant, slope coefficients are same for all the companies but intercept is different for different companies. The model is of the form,
+\large
+\begin{center}$y_{it} = \beta_{0i} + \beta_{1}X_{1it} + \beta_{2}x_{2it} + \epsilon_{it}$\end{center}
+\normalsize
+which is equivalent to,
+\large
+\begin{center} $ Y_{it} = \sum\limits_{j = 1}^{11} \alpha_j I_{j} + \beta_1 X_{1it} + \beta_2 X_{2it} $ \end{center}
+\normalsize
+where, $I_{j} = 1$ if $j = i$. The first equation describes the idea but to fit model we have to use the second equation ie. we have use **dummy variable technique**. Note that intercept is dropped from the model to avoid multicollinearity problem. We can also use 10 dummy variables with an intercept term.
+
+\vspace{2mm}
+Summary of the Fixed Effects model in our case:
+\vspace{1mm}
+```{r echo = FALSE}
+fixed_effects_model <- lm(invest ~ value + capital + firm - 1, data = Grunfeld)
+output <- capture.output(summary(fixed_effects_model))
+cat(noquote(output[10:23]), fill = getOption("width"))
+cat(noquote(""))
+cat(noquote(""))
+cat(noquote(output[27:29]), fill = getOption("width"))
+```
+
+\vspace{2mm}
+Nine out of eleven dummy variables are significant and the p-value of the fit is small.
+
+\vspace{2mm}
+Results from Durbin-Watson test are as follows:
+
+\vspace{1mm}
+```{r echo = FALSE}
+pdwtest(invest ~ value + capital, data = panel_data, model = "within")
+```
+Durbin-Watson test statistic is much higher than Pooled model.
+
+\vspace{2mm}
+From the above two results we may conclude that different companies have different strategy to inves t and by using Fixed Effects Model we are able to explain that to some extent. Now one thing should be noted that we have a coefficient for every cross section. Now if the number of cross section is large then we have to estimate a large number of coefficients. To avoid this we use Random Effecs Model.
+
+\newpage
+\newgeometry{top = 18mm, bottom = 18mm, left = 20mm, right = 20mm}
+\subsection{Random Effects Model}
+Here also the model is of the form,
+\large
+\begin{center}$Y_{it} = \beta_{0i} + \beta_1 X_{1it} + \beta_2 x_{2it} + \epsilon_{it}$ \end{center}
+\normalsize
+but the difference is that here $\beta_{0i}$ is a random variable with mean $\beta_0$, ie.
+\large
+\begin{center} $\beta_{0i} = \beta_{0} + u_i \hspace{10mm} i = 1, 2, 3,..., N$ \end{center}
+\normalsize
+where, $u_i$ is a random error with mean 0 and variance $\sigma_{u}^2$. So, complete form of the Fixed Effects Model is,
+\large
+\begin{center} $Y_{it} = \beta_0 + \beta_1 X_{1it} + \beta_2 X_{2it} + \epsilon_{it} + u_i$ \end{center}
+\begin{center} $ = \hspace{1mm} \beta_0 + \beta_1 X_{1it} + \beta_2 X_{2it} + w_{it}$ \end{center}
+\normalsize
+where, \large $w_{it} = \epsilon_{it} + u_{i}$. \normalsize Now we have to estimate only $\beta_0$ and $\sigma_{u}^2$.
+
+\vspace{1mm}
+The additional assumptions of Random Effects Model are,
+\large
+\begin{center} $ u_i \sim N(0, \sigma_{u}^2)$ \end{center}
+\begin{center} $ E(u_i \epsilon_{it}) = E(u_i \epsilon_{jt}) = E(u_i u_j) = 0 \hspace{7mm} (i \neq j)$ \end{center}
+\normalsize
+Due to the assumptions,
+\large 
+\begin{center} $cov(w_{it}, w_{is}) = cov(\epsilon_{it} + u_i, \epsilon_{is} + u_i) = var(u_i) = \sigma_{u}^2$ \end{center}
+\normalsize
+
+\vspace{2mm}
+So, the Random Effects Model is,
+\large
+\begin{center} $Y_{it} = \hspace{1mm} \beta_0 + \beta_1 X_{1it} + \beta_2 X_{2it} + w_{it}$ \end{center}
+\begin{center} $E(w_{it}) = 0$ \end{center}
+\begin{center} $var(w_{it}) = \sigma_{\epsilon}^2 + \sigma_{u}^2$ \end{center}
+\begin{center} $cov(w_{it}, w_{is}) = cov(\epsilon_{it} + u_i, \epsilon_{is} + u_i) = var(u_i) = \sigma_{u}^2$ \end{center}
+\vspace{2mm}
+
+\normalsize
+So, for a given cross-section errors are correlated. Due to this fact applying OLS for the original model will give inefficient estimators. To get efficient estimators we have to apply GLS, ie. we have to transform the model using $w_{it}$, instead we can apply the FGLS.
+
+\vspace{2mm}
+\subsubsection{How Unknown Parameters of Random Effects Model are Estimated}
+Pooled and Fixed Effects Model coefficients are easy to estimate but for Random Effects Model it is not straight forward. In Random Effects Model we have to estimate two variances and the model coefficients. Here instead of applying OLS to estimate the coefficients of the original model we apply OLS on **partial demeaned data**, where partial demeaning is:
+\large
+\begin{center} $Y_{it} - \theta \bar{Y_i} = \beta_0(1 - \theta) + \beta_1 (X_{1it} - \theta \bar{X_{1i}}) + \beta_2(X_{2it} - \bar{X_{2i}}) + (\epsilon_{it} - \theta \bar{\epsilon_{i}})$ \end{center}
+\normalsize
+
+\vspace{2mm}
+where, \hspace{5cm} \large $\theta = 1 - [\sigma_{\epsilon}^2 / (\sigma_{\epsilon}^2 + T\sigma_{u}^2)]^{1 / 2}$
+\normalsize
+
+\vspace{2mm}
+We first estimate $\sigma_{\epsilon}^2$ and $\sigma_{u}^2$ by,
+
+\vspace{1mm}
+\large
+\begin{center}$ \hat{\sigma_{\epsilon}^2} = s_{FE}^2 = \frac{RSS \hspace{0.7mm} of \hspace{0.7mm} Fixed \hspace{0.7mm} Effects \hspace{0.7mm} Model}{NT - N - K}$ \end{center}
+and, \hspace{45mm} $\hat{\sigma_{u}^2} = s_{Pooled}^2 - \hat{\sigma_{\epsilon}^2} = \frac{RSS \hspace{0.7mm} of \hspace{0.7mm} Pooled \hspace{0.7mm} Model}{NT - K -1} - \hat{\sigma_{\epsilon}^2}$
+\normalsize
+
+\vspace{1mm}
+Then using these we estimate $\theta$. Note that the denominator in $\hat{\sigma_{u}^2}$ may be $NT - N - K$. $K$ is number of regressors, in our case it is 2. Then we substitute $\hat{\theta}$ in the partial demeaned model and obtain the coefficient estimates of the model by applying OLSE.
+
+\newpage
+\newgeometry{top = 18mm, bottom = 18mm, left = 22mm, right = 22mm}
+Results from Random Effects Model:
+```{r echo=FALSE, comment = NA}
+random_effects_model <- plm(invest ~ value + capital, data = panel_data, model = "random")
+output <- capture.output(summary(random_effects_model))
+noquote(output[9])
+noquote(c(output[10], "", output[11], "", output[12], "", output[13]))
+cat(noquote(""))
+noquote(output[18:23])
+cat(noquote(""))
+cat(noquote(""))
+noquote(output[27:31])
+```
+Idiosyncratic Variance and individual variance is referring to $\sigma_{\epsilon}^2$ and $\sigma_{\epsilon}^2$. The estimate for these are 2530.04 and 6201.93 and the estimate of theta is 0.8586. The coefficient estimates are shown in table.
+
+\vspace{1cm}
+\section{Choosing Between Pooled, Fixed Effects and Random Effects Model}
+Fixed and Random Effects Model try to consider the unobserved cross sectional effect by varying the slope coefficients for cross sections. Now if correlation between this unobserved cross sectional effect is small then Pooled Model will yield efficient estimators. Now if there is cross sectional effect but it is uncorrelated with regressors then we have to use Random Effects Model and if the correlation is not 0 then we have to use Fixed Effects Model.
+\subsection{Choosing Between Pooled and Fixed Effects Model}
+Pooled Model can be viewed as a restricted form of Fixed Effects Model. When all the dummy variable coefficients, $\alpha_j$ are same then we can add the common $\alpha_j$ value to the model intercept and we will get the Pooled Model. So if we test,
+
+\large
+\begin{center} $ H_0: \alpha_1 = ... = \alpha_{11} \hspace{5mm} (ie. \hspace{2mm} \alpha_j - \alpha_l = 0, j \neq l) $ \end{center}
+\begin{center} vs \hspace{2cm} $ H_1:$ at least one $\alpha_j \neq 0$ \end{center}
+\normalsize
+
+\vspace{1mm}
+then we will get some intuition which model is appropriate.
+
+\vspace{2mm}
+Test statistic is,
+\large
+\begin{center} $ F = $ \LARGE $ \frac{\frac{SS_{Res}(Pooled) - SS_{Res}(FE)}{N - 1}}{\frac{SS_{Res}(FE)}{TN - k - N}} \hspace{4mm}$ \large $ \sim \hspace{4mm} F_{N - 1 \hspace{1mm}, \hspace{1mm} TN - k - N} $ \end{center}
+\normalsize
+
+\vspace{2mm}
+we reject $H_0$ if observed value of $F>F_{\alpha \hspace{1mm},\hspace{1mm} N-1, \hspace{1mm} TN-k-N}$, where $\alpha$ is level of significance and $k$ is number of regressors. For our case the test statistic value is 49.20708 $> F_{ 0.05, 10, 207 }$. So, we reject the null hypothesis and conclude that, in our case Fixed Effects Model is more appropriate than Pooled Model.
+
+\newpage
+\subsection{Choosing Between Fixed Effects and Random Effects Model}
+We have to use **Hausman Test** to determine the better model among Fixed and Random Effects Model. Here we test,
+\begin{center} $H_0 :$ Correlation between unobserved cross sectional effect and regressors is 0. \end{center}
+against, \hspace{6cm} $H_1:$ $H_0$ is not true.
+
+
+\vspace{2mm}
+
+
+
+
+
+\newpage
+```{r}
+ggplot(Grunfeld[1:80, ], aes(x = year, y = invest, color = factor(firm))) + geom_line()
+```
+R Square is not very informative in this case. In panel data analysis, rely more on individual significance and overall significance of the model instead of R square or adjusted R square. Generally, R square is low in cross sectional data as compared to time series data. In panel data due to heterogeneity of cross sections, it is not too high. If your data is more time dominant, R square can be higher as compared to the case when panel data is more cross section dominant. In general, more related included explanatory variables boost the value of R square. Yet, one has to focus more on objectives of the research to be fulfilled from individual significance and overall significance of the model making sure that there is no model specification bias and avoid spurious regressions. Another point to mention here is that a very high R square in the presence of very few significant t values indicates the presence of multicollinearity and spuriousness of the regression.
+
+\vspace{4mm}
+So, may be variying the slope coefficients over companies we may get better results. Doing so may also increase the DW test statistic value (which is indicating presence of autocorrelation even after applying Fixed Effects model).
+
+```{r}
+cat(noquote(output[19:23]), fill = getOption("width"))
+```
